@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a4d8c">
+<title>ADEEGE Queue Display</title>
+<!-- Firebase (only activates if you paste your config below) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  :root{
+    --bg:#d6ecff; --panel:#b8ddff; --card:#e9f5ff; --border:#7fb8e8;
+    --blue:#0a4d8c; --blue-dark:#063a6b;
+    --green:#27ae60; --green-dark:#1d8a4b;
+    --amber:#f39c12; --red:#c0392b;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  body{font-family:var(--font);background:var(--bg);color:#000;font-weight:700;font-size:17px;overscroll-behavior:none;}
+
+  /* ── SHARED TOP BAR (same on all three screens) ─────────── */
+  .top-bar{
+    background:var(--blue);border-bottom:4px solid var(--blue-dark);
+    padding:18px 24px;display:flex;align-items:center;justify-content:space-between;
+    position:sticky;top:0;z-index:50;
+  }
+  .brand{display:flex;align-items:baseline;gap:14px;}
+  .brand h1{font-size:36px;font-weight:900;letter-spacing:2px;color:#fff;}
+  .brand .shop{font-size:18px;font-weight:800;color:rgba(255,255,255,0.9);}
+  .screen-tag{
+    background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.5);
+    color:#fff;font-size:16px;font-weight:900;padding:8px 18px;border-radius:24px;
+  }
+  .clock{font-size:22px;font-weight:900;color:#fff;}
+
+  /* ── LAUNCHER ────────────────────────────────────────────── */
+  #launcher{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;gap:20px;padding:24px;}
+  #launcher h2{font-size:26px;font-weight:900;color:var(--blue);margin-bottom:6px;text-align:center;}
+  #launcher p{font-size:16px;color:rgba(0,0,0,0.6);margin-bottom:14px;text-align:center;}
+  .launch-btn{
+    width:100%;max-width:430px;padding:26px;border-radius:18px;border:3px solid var(--border);
+    background:var(--card);cursor:pointer;font-family:var(--font);text-align:left;
+    display:flex;align-items:center;gap:18px;transition:all 0.12s;
+  }
+  .launch-btn:hover{border-color:var(--blue);}
+  .launch-icon{font-size:40px;}
+  .launch-title{font-size:22px;font-weight:900;color:var(--blue);}
+  .launch-sub{font-size:14px;font-weight:700;color:rgba(0,0,0,0.55);margin-top:3px;}
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ── CONTROL (iPad) ──────────────────────────────────────── */
+  .control-wrap{padding:20px;max-width:1100px;margin:0 auto;}
+  .entry-panel{
+    background:var(--card);border:3px solid var(--border);border-radius:18px;
+    padding:20px;margin-bottom:22px;
+  }
+  .entry-panel label{display:block;font-size:15px;font-weight:800;color:var(--blue);margin:10px 0 6px;text-transform:uppercase;letter-spacing:1px;}
+  .entry-panel input,.entry-panel textarea{
+    width:100%;background:#fff;border:3px solid var(--border);border-radius:12px;
+    padding:16px 14px;font-size:19px;font-weight:700;font-family:var(--font);color:#000;
+  }
+  .entry-panel input:focus,.entry-panel textarea:focus{outline:none;border-color:var(--blue);}
+  .entry-panel textarea{height:70px;resize:none;}
+  .add-btn{
+    width:100%;margin-top:16px;padding:22px;background:var(--blue);color:#fff;
+    border:none;border-radius:14px;font-size:23px;font-weight:900;cursor:pointer;font-family:var(--font);
+  }
+  .add-btn:active{transform:scale(0.98);}
+
+  .queues{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:720px){.queues{grid-template-columns:1fr;}}
+  .queue-col{background:var(--panel);border:3px solid var(--border);border-radius:18px;padding:16px;}
+  .queue-col h3{font-size:19px;font-weight:900;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+  .qc-preparing h3{color:var(--amber);}
+  .qc-ready h3{color:var(--green);}
+  .count-pill{background:var(--blue);color:#fff;border-radius:18px;padding:4px 14px;font-size:15px;font-weight:900;}
+
+  .order-card{
+    background:var(--card);border:3px solid var(--border);border-radius:14px;
+    padding:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;
+  }
+  .oc-num{font-size:30px;font-weight:900;color:var(--blue);min-width:64px;}
+  .oc-info{flex:1;}
+  .oc-name{font-size:19px;font-weight:900;}
+  .oc-order{font-size:15px;font-weight:700;color:rgba(0,0,0,0.6);margin-top:2px;}
+  .oc-btn{
+    padding:16px 20px;border:none;border-radius:12px;font-size:17px;font-weight:900;
+    cursor:pointer;font-family:var(--font);color:#fff;white-space:nowrap;
+  }
+  .oc-btn.ready{background:var(--green);}
+  .oc-btn.collect{background:var(--blue);}
+  .oc-btn:active{transform:scale(0.96);}
+  .empty-note{text-align:center;padding:26px 10px;font-size:16px;color:rgba(0,0,0,0.4);font-weight:700;}
+  .reset-row{text-align:center;margin-top:20px;}
+  .reset-btn{background:transparent;border:2.5px solid var(--red);color:var(--red);padding:10px 22px;border-radius:12px;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);}
+
+  /* ── TV SCREENS (same layout, same colors) ───────────────── */
+  .tv-wrap{padding:28px;max-width:1500px;margin:0 auto;}
+  .tv-banner{
+    text-align:center;border-radius:20px;padding:22px;margin-bottom:26px;
+    font-size:46px;font-weight:900;letter-spacing:2px;color:#fff;
+  }
+  .tv-banner.preparing{background:var(--amber);}
+  .tv-banner.ready{background:var(--green);}
+  .tv-banner .so{display:block;font-size:22px;font-weight:800;opacity:0.9;margin-top:4px;letter-spacing:1px;}
+  .tv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px;}
+  .tv-card{
+    background:var(--card);border:4px solid var(--border);border-radius:20px;
+    padding:26px 16px;text-align:center;
+  }
+  .tv-card.is-ready{border-color:var(--green);background:#e8f8ee;}
+  .tv-card.flash{animation:flashIn 1s ease 3;}
+  @keyframes flashIn{0%,100%{background:#e8f8ee;}50%{background:var(--green);color:#fff;}}
+  .tv-num{font-size:76px;font-weight:900;color:var(--blue);line-height:1;}
+  .tv-card.is-ready .tv-num{color:var(--green);}
+  .tv-name{font-size:28px;font-weight:900;margin-top:10px;}
+  .tv-empty{grid-column:1/-1;text-align:center;padding:80px 20px;font-size:30px;font-weight:800;color:rgba(0,0,0,0.35);}
+
+  .sync-dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;}
+  .sync-on{background:#2ecc71;}
+  .sync-off{background:#e67e22;}
+  .sync-note{font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(110px);background:var(--blue);color:#fff;padding:14px 28px;border-radius:28px;font-size:16px;font-weight:900;transition:transform 0.3s;z-index:999;}
+  .toast.show{transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="brand"><h1 id="brand-name">ADEEGE</h1><span class="shop" id="brand-shop">Cafe & Restaurant</span></div>
+  <div class="screen-tag" id="screen-tag">QUEUE SYSTEM</div>
+  <div style="text-align:right">
+    <div class="clock" id="clock">--:--</div>
+    <div class="sync-note"><span class="sync-dot sync-off" id="sync-dot"></span><span id="sync-label">Local mode</span></div>
+  </div>
+</div>
+
+<!-- LAUNCHER: pick which screen this device is -->
+<div id="launcher">
+  <h2>Which screen is this device?</h2>
+  <p>Choose once per device · Dooro hal mar qalab kasta</p>
+  <button class="launch-btn" onclick="setMode('control')">
+    <span class="launch-icon">📱</span>
+    <span><span class="launch-title">Operator Control (iPad)</span><br>
+    <span class="launch-sub">Enter orders · tap Ready · tap Collected</span></span>
+  </button>
+  <button class="launch-btn" onclick="setMode('preparing')">
+    <span class="launch-icon">📺</span>
+    <span><span class="launch-title">TV 1 — Preparing Board</span><br>
+    <span class="launch-sub">Shows orders being prepared · Waa la diyaarinayaa</span></span>
+  </button>
+  <button class="launch-btn" onclick="setMode('ready')">
+    <span class="launch-icon">📺</span>
+    <span><span class="launch-title">TV 2 — Ready Board</span><br>
+    <span class="launch-sub">Shows orders ready for pickup · Diyaar</span></span>
+  </button>
+</div>
+
+<!-- CONTROL VIEW (iPad) -->
+<div id="view-control" class="view">
+  <div class="control-wrap">
+    <div class="entry-panel">
+      <label>Customer Name · Magaca Macmiilka</label>
+      <input type="text" id="in-name" placeholder="e.g. Amina" autocomplete="off">
+      <label>Order · Dalabka</label>
+      <textarea id="in-order" placeholder="e.g. 2x Somali Tea (Large), 1 Sambusa"></textarea>
+      <button class="add-btn" onclick="addOrder()">➕ Add Order · Geli Dalabka</button>
+    </div>
+    <div class="queues">
+      <div class="queue-col qc-preparing">
+        <h3>PREPARING <span class="count-pill" id="prep-count">0</span></h3>
+        <div id="list-preparing"></div>
+      </div>
+      <div class="queue-col qc-ready">
+        <h3>READY <span class="count-pill" id="ready-count">0</span></h3>
+        <div id="list-ready"></div>
+      </div>
+    </div>
+    <div class="reset-row">
+      <button class="reset-btn" onclick="resetDay()">🔄 Clear All Orders (start new day)</button>
+    </div>
+  </div>
+</div>
+
+<!-- TV 1: PREPARING -->
+<div id="view-preparing" class="view">
+  <div class="tv-wrap">
+    <div class="tv-banner preparing">PREPARING<span class="so">WAA LA DIYAARINAYAA</span></div>
+    <div class="tv-grid" id="tv-prep-grid"></div>
+  </div>
+</div>
+
+<!-- TV 2: READY -->
+<div id="view-ready" class="view">
+  <div class="tv-wrap">
+    <div class="tv-banner ready">READY — PLEASE COLLECT<span class="so">DIYAAR — FADLAN KAALAY</span></div>
+    <div class="tv-grid" id="tv-ready-grid"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// SHOP CONFIG — the only things you change per client
+// ═══════════════════════════════════════════════════════════════
+const SHOP = {
+  appName:  'ADEEGE',
+  shopName: 'Cafe & Restaurant',   // CHANGE per client, e.g. 'Capitol Cafe'
+  shopId:   'adeege_cafe_queue'    // CHANGE per client, e.g. 'capitol_queue' (no spaces)
+};
+
+// FIREBASE CONFIG — paste your config here to sync across devices (iPad + 2 TVs).
+// Leave databaseURL empty ('') for single-device / same-browser testing.
+const FIREBASE_CONFIG = {
+  apiKey: '',
+  authDomain: '',
+  databaseURL: '',   // e.g. 'https://adeege-app-default-rtdb.firebaseio.com'
+  projectId: ''
+};
+// ═══════════════════════════════════════════════════════════════
+
+document.getElementById('brand-name').textContent = SHOP.appName;
+document.getElementById('brand-shop').textContent = SHOP.shopName;
+
+let orders = [];          // {id, name, order, status:'preparing'|'ready', ts}
+let counter = 1;
+let mode = null;
+let db = null;            // firebase ref when active
+let lastReadyIds = new Set();
+
+// ── Sync layer: Firebase if configured, else localStorage ─────
+const useFirebase = !!FIREBASE_CONFIG.databaseURL;
+
+function initSync(){
+  if(useFirebase){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database().ref('queues/' + SHOP.shopId);
+    db.on('value', snap => {
+      const v = snap.val() || {};
+      orders  = v.orders  || [];
+      counter = v.counter || 1;
+      renderAll();
+    });
+    document.getElementById('sync-dot').className = 'sync-dot sync-on';
+    document.getElementById('sync-label').textContent = 'Live sync ON';
+  } else {
+    loadLocal();
+    // cross-tab updates (same browser)
+    window.addEventListener('storage', e => { if(e.key === SHOP.shopId){ loadLocal(); renderAll(); } });
+    // safety polling
+    setInterval(() => { loadLocal(); renderAll(); }, 2000);
+    document.getElementById('sync-label').textContent = 'Local mode (same-device tabs only)';
+  }
+}
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(SHOP.shopId);
+    if(raw){ const v = JSON.parse(raw); orders = v.orders||[]; counter = v.counter||1; }
+  }catch(e){}
+}
+function persist(){
+  if(useFirebase){ db.set({orders, counter}); }
+  else{ localStorage.setItem(SHOP.shopId, JSON.stringify({orders, counter})); renderAll(); }
+}
+
+// ── Mode handling (remembered per device) ─────────────────────
+function setMode(m){
+  mode = m;
+  localStorage.setItem(SHOP.shopId + '_mode', m);
+  applyMode();
+}
+function applyMode(){
+  document.getElementById('launcher').style.display = mode ? 'none' : 'flex';
+  ['control','preparing','ready'].forEach(v =>
+    document.getElementById('view-'+v).classList.toggle('active', mode === v));
+  const tags = {control:'📱 OPERATOR CONTROL', preparing:'📺 TV 1 · PREPARING', ready:'📺 TV 2 · READY'};
+  document.getElementById('screen-tag').textContent = mode ? tags[mode] : 'QUEUE SYSTEM';
+  renderAll();
+}
+// long-press the screen tag 2s to change mode (e.g. re-assign a TV)
+let tagTimer;
+document.getElementById('screen-tag').addEventListener('pointerdown', () => {
+  tagTimer = setTimeout(() => { localStorage.removeItem(SHOP.shopId+'_mode'); mode=null; applyMode(); }, 2000);
+});
+document.getElementById('screen-tag').addEventListener('pointerup', () => clearTimeout(tagTimer));
+
+// ── Operator actions ──────────────────────────────────────────
+function addOrder(){
+  const name = document.getElementById('in-name').value.trim();
+  const order = document.getElementById('in-order').value.trim();
+  if(!name){ showToast('Enter customer name · Geli magaca'); return; }
+  orders.unshift({ id: counter++, name, order, status:'preparing', ts: Date.now() });
+  document.getElementById('in-name').value = '';
+  document.getElementById('in-order').value = '';
+  document.getElementById('in-name').focus();
+  persist();
+  showToast('Order #' + (counter-1) + ' added');
+}
+function markReady(id){
+  const o = orders.find(x => x.id === id); if(!o) return;
+  o.status = 'ready'; o.ts = Date.now();
+  persist();
+  showToast('#' + id + ' READY · DIYAAR');
+}
+function markCollected(id){
+  orders = orders.filter(x => x.id !== id);
+  persist();
+}
+function resetDay(){
+  if(!confirm('Clear ALL orders and reset numbers to #1?\nDhammaan dalabyada ma tirtiraysaa?')) return;
+  orders = []; counter = 1; persist();
+  showToast('New day started · Maalin cusub');
+}
+
+// ── Rendering ─────────────────────────────────────────────────
+function renderAll(){ renderControl(); renderTvPrep(); renderTvReady(); }
+
+function renderControl(){
+  if(mode !== 'control') return;
+  const prep  = orders.filter(o => o.status === 'preparing');
+  const ready = orders.filter(o => o.status === 'ready');
+  document.getElementById('prep-count').textContent  = prep.length;
+  document.getElementById('ready-count').textContent = ready.length;
+  document.getElementById('list-preparing').innerHTML = prep.length ? prep.map(o => `
+    <div class="order-card">
+      <div class="oc-num">#${o.id}</div>
+      <div class="oc-info"><div class="oc-name">${escapeHtml(o.name)}</div>${o.order?`<div class="oc-order">${escapeHtml(o.order)}</div>`:''}</div>
+      <button class="oc-btn ready" onclick="markReady(${o.id})">✓ READY<br><span style="font-size:12px;font-weight:700">Diyaar</span></button>
+    </div>`).join('') : '<div class="empty-note">No orders being prepared</div>';
+  document.getElementById('list-ready').innerHTML = ready.length ? ready.map(o => `
+    <div class="order-card">
+      <div class="oc-num" style="color:var(--green)">#${o.id}</div>
+      <div class="oc-info"><div class="oc-name">${escapeHtml(o.name)}</div>${o.order?`<div class="oc-order">${escapeHtml(o.order)}</div>`:''}</div>
+      <button class="oc-btn collect" onclick="markCollected(${o.id})">✓ COLLECTED<br><span style="font-size:12px;font-weight:700">La qaatay</span></button>
+    </div>`).join('') : '<div class="empty-note">No orders ready yet</div>';
+}
+
+function renderTvPrep(){
+  if(mode !== 'preparing') return;
+  const prep = orders.filter(o => o.status === 'preparing');
+  document.getElementById('tv-prep-grid').innerHTML = prep.length ? prep.map(o => `
+    <div class="tv-card"><div class="tv-num">#${o.id}</div><div class="tv-name">${escapeHtml(o.name)}</div></div>`
+  ).join('') : '<div class="tv-empty">No orders in the kitchen<br>Dalabyo kuma jiraan jikada</div>';
+}
+
+function renderTvReady(){
+  if(mode !== 'ready') return;
+  const ready = orders.filter(o => o.status === 'ready').sort((a,b)=>b.ts-a.ts);
+  document.getElementById('tv-ready-grid').innerHTML = ready.length ? ready.map(o => {
+    const isNew = !lastReadyIds.has(o.id);
+    return `<div class="tv-card is-ready${isNew?' flash':''}"><div class="tv-num">#${o.id}</div><div class="tv-name">${escapeHtml(o.name)}</div></div>`;
+  }).join('') : '<div class="tv-empty">No orders ready yet<br>Weli dalab diyaar ah ma jiro</div>';
+  lastReadyIds = new Set(ready.map(o => o.id));
+}
+
+// ── Utilities ─────────────────────────────────────────────────
+function escapeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+function tickClock(){
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+setInterval(tickClock, 10000); tickClock();
+
+// ── Boot ──────────────────────────────────────────────────────
+mode = localStorage.getItem(SHOP.shopId + '_mode') || null;
+// URL override: ?screen=control / preparing / ready
+const urlMode = new URLSearchParams(location.search).get('screen');
+if(['control','preparing','ready'].includes(urlMode)) mode = urlMode;
+initSync();
+applyMode();
+loadLocal(); renderAll();
+</script>
+</body>
+</html>
